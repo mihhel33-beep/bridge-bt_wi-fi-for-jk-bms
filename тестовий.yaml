@@ -1,0 +1,155 @@
+esphome:
+  name: esp32-bms-monitor
+  friendly_name: BMS Display Wroom
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Драйвер для JK BMS
+external_components:
+  - source: github://syssi/esphome-jk-bms@main
+
+# Налаштування I2C для Wroom32 (SDA=21, SCL=22)
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+# Шрифти
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 12
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 20
+
+logger:
+  level: DEBUG
+
+wifi:
+  ssid: "Xiaomi_402D"
+  password: "PASSWORD"
+  power_save_mode: NONE
+
+api:
+  reboot_timeout: 0s
+ota:
+  platform: esphome
+
+# Bluetooth налаштування
+esp32_ble_tracker:
+  scan_parameters:
+    active: true
+    interval: 100ms
+    window: 80ms
+
+ble_client:
+  - mac_address: C8:47:80:45:09:0C
+    id: jkbms_ble
+    setup_priority: -10
+
+jk_bms_ble:
+  - ble_client_id: jkbms_ble
+    id: my_jkbms
+    protocol_version: JK02_32S
+
+sensor:
+  - platform: jk_bms_ble
+    jk_bms_ble_id: my_jkbms
+    
+    # Сенсори для виводу на екран та ХА
+    total_voltage:
+      id: bms_v
+      name: "BMS Total Voltage"
+    current:
+      id: bms_a
+      name: "BMS Current"
+    state_of_charge:
+      id: bms_soc
+      name: "BMS SOC"
+    capacity_remaining:
+      id: bms_ah
+      name: "BMS Capacity Remaining"
+    temperature_sensor_1:
+      id: bms_t1
+      name: "BMS Temperature 1"
+    temperature_sensor_2:
+      id: bms_t2
+      name: "BMS Temperature 2"
+    power_tube_temperature:
+      id: bms_t_mos
+      name: "BMS MOS Temperature"
+    delta_cell_voltage:
+      id: bms_delta
+      name: "BMS Cell Delta"
+
+    # Виправлені сенсори для ХА (тепер без помилок)
+    max_cell_voltage: { name: "BMS Max Cell Voltage", accuracy_decimals: 3 }
+    min_cell_voltage: { name: "BMS Min Cell Voltage", accuracy_decimals: 3 }
+    max_voltage_cell: { name: "BMS Max Voltage Cell Number" }
+    min_voltage_cell: { name: "BMS Min Voltage Cell Number" }
+    
+    # Усі 16 банок для Home Assistant
+    cell_voltage_1: { name: "BMS Cell 1 Voltage", accuracy_decimals: 3 }
+    cell_voltage_2: { name: "BMS Cell 2 Voltage", accuracy_decimals: 3 }
+    cell_voltage_3: { name: "BMS Cell 3 Voltage", accuracy_decimals: 3 }
+    cell_voltage_4: { name: "BMS Cell 4 Voltage", accuracy_decimals: 3 }
+    cell_voltage_5: { name: "BMS Cell 5 Voltage", accuracy_decimals: 3 }
+    cell_voltage_6: { name: "BMS Cell 6 Voltage", accuracy_decimals: 3 }
+    cell_voltage_7: { name: "BMS Cell 7 Voltage", accuracy_decimals: 3 }
+    cell_voltage_8: { name: "BMS Cell 8 Voltage", accuracy_decimals: 3 }
+    cell_voltage_9: { name: "BMS Cell 9 Voltage", accuracy_decimals: 3 }
+    cell_voltage_10: { name: "BMS Cell 10 Voltage", accuracy_decimals: 3 }
+    cell_voltage_11: { name: "BMS Cell 11 Voltage", accuracy_decimals: 3 }
+    cell_voltage_12: { name: "BMS Cell 12 Voltage", accuracy_decimals: 3 }
+    cell_voltage_13: { name: "BMS Cell 13 Voltage", accuracy_decimals: 3 }
+    cell_voltage_14: { name: "BMS Cell 14 Voltage", accuracy_decimals: 3 }
+    cell_voltage_15: { name: "BMS Cell 15 Voltage", accuracy_decimals: 3 }
+    cell_voltage_16: { name: "BMS Cell 16 Voltage", accuracy_decimals: 3 }
+
+# Налаштування екрана
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    id: my_display
+    update_interval: 1s
+    pages:
+      - id: page1 # СТАТУС
+        lambda: |-
+          it.printf(64, 0, id(font_small), TextAlign::TOP_CENTER, "POWER STATUS");
+          it.line(0, 13, 128, 13);
+          it.printf(6, 18, id(font_big), "U: %.2f V", id(bms_v).state);
+          it.printf(6, 42, id(font_big), "I: %.2f A", id(bms_a).state);
+
+      - id: page2 # ЗАРЯД
+        lambda: |-
+          it.printf(64, 0, id(font_small), TextAlign::TOP_CENTER, "CAPACITY");
+          it.line(0, 13, 128, 13);
+          it.printf(6, 18, id(font_big), "SOC: %.0f %%", id(bms_soc).state);
+          it.printf(6, 42, id(font_big), "%.1f Ah", id(bms_ah).state);
+
+      - id: page3 # ЕНЕРГІЯ
+        lambda: |-
+          it.printf(64, 0, id(font_small), TextAlign::TOP_CENTER, "ENERGY FLOW");
+          it.line(0, 13, 128, 13);
+          float watts = id(bms_v).state * id(bms_a).state;
+          it.printf(6, 18, id(font_big), "W: %.0f", watts);
+          it.printf(6, 42, id(font_big), "D: %.3f V", id(bms_delta).state);
+
+      - id: page4 # ТЕМПЕРАТУРИ
+        lambda: |-
+          it.printf(64, 0, id(font_small), TextAlign::TOP_CENTER, "HEALTH");
+          it.line(0, 13, 128, 13);
+          it.printf(6, 16, id(font_small), "T1:  %.1f C", id(bms_t1).state);
+          it.printf(6, 32, id(font_small), "T2:  %.1f C", id(bms_t2).state);
+          it.printf(6, 48, id(font_small), "MOS: %.1f C", id(bms_t_mos).state);
+
+# Перемикання екранів
+interval:
+  - interval: 5s
+    then:
+      - display.page.show_next: my_display
